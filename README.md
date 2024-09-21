@@ -27,5 +27,21 @@ The tool leverages a combination of popular subdomain discovery tools.
 - **Fast & Efficient**: Utilizes passive enumeration techniques for faster and stealthier operations.
 
 ---
+## Installation
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/BiswajeetRay7/LitOcean.git
+   cd LitOcean
+   bash LitOcean.sh
+---
+This tool is D3d1c4737 to V57
+
+## Author
+
+- **Name**: Biswajeet Ray  
+- **GitHub**: [Biswajeet Ray](https://github.com/BiswajeetRay7)  
+- **LinkedIn**: [Biswajeet Ray](https://www.linkedin.com/in/biswajeet-ray-397742200/)  
 
 
+  
