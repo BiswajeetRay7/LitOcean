@@ -4,7 +4,6 @@ The LitOcean Subdomain Enumeration Tool
 # LitOcean Subdomain Enumeration Tool
 
 ### Author: Biswajeet Ray  
-### Date: `$(date '+%Y-%m-%d %H:%M:%S')`
 
 ---
 
