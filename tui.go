@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type Source struct {
@@ -14,11 +16,25 @@ type Source struct {
 }
 
 type Model struct {
-	Sources []Source
-	Cursor  int
+	Sources   []Source
+	Cursor    int
+	StartTime time.Time
+	Dark      bool
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func stars(s string) string {
+	if s == "Done" {
+		return "⭐⭐⭐"
+	}
+	if s == "Running" {
+		return "⭐⭐☆"
+	}
+	return "⭐☆☆"
+}
+
+func (m Model) Init() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return t })
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -48,6 +64,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			engine.Pause()
 		case "r":
 			engine.Resume()
+		case "e":
+			exportAll()
+		case "t":
+			m.Dark = !m.Dark
 		case "q":
 			return m, tea.Quit
 		}
@@ -56,23 +76,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	out := `
-☠️🌊 LITOCEAN-GX 🌊☠️
-Subdomain Enumeration Engine
-Developed by Biswajeet Ray
---------------------------------------------------
-↑↓ scroll | s sort | p pause | r resume | q quit
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#5FD7FF")).
+		Bold(true)
 
-`
+	out := title.Render("🌊⭐ LITOCEAN ⭐🌊\nAdvanced Subdomain Enumeration Framework\n")
+	out += fmt.Sprintf("⏱ Elapsed: %s\n\n", time.Since(m.StartTime).Truncate(time.Second))
+
 	for i, s := range m.Sources {
-		cursor := " "
+		cur := " "
 		if i == m.Cursor {
-			cursor = "➤"
+			cur = "➤"
 		}
-		out += fmt.Sprintf("%s %-15s %-8s %d\n",
-			cursor, s.Name, s.Status, s.Count)
+		out += fmt.Sprintf("%s %-14s %s %-8s %d\n",
+			cur, s.Name, stars(s.Status), s.Status, s.Count)
 	}
 
 	out += fmt.Sprintf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
+	out += "\nKeys: ↑↓ scroll | s sort | e export | t theme | p pause | r resume | q quit\n"
 	return out
 }
