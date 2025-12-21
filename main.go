@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,198 +13,212 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/lipgloss"
 )
 
+/* ===================== GLOBALS ===================== */
+
+var (
+	results = make(map[string]bool)
+	mu      sync.Mutex
+)
+
+/* ===================== UTILS ===================== */
+
+func add(sub string) {
+	mu.Lock()
+	results[sub] = true
+	mu.Unlock()
+}
+
+/* ===================== TUI MODEL ===================== */
+
 type source struct {
-	name   string
-	count  int
-	status string
+	Name     string
+	Count    int
+	Status   string
+	Progress float64
 }
 
 type model struct {
-	sources []source
-	total   int
-	progressBars map[string]progress.Model
+	Sources []source
 }
 
-func initialModel() model {
-	srcs := []source{
-		{"AlienVault", 0, "Pending"},
-		{"crt.sh", 0, "Pending"},
-		{"HackerTarget", 0, "Pending"},
-		{"Subfinder", 0, "Pending"},
-		{"Assetfinder", 0, "Pending"},
-		{"Amass", 0, "Pending"},
-		{"Findomain", 0, "Pending"},
-	}
-	pBars := make(map[string]progress.Model)
-	for _, s := range srcs {
-		pBars[s.name] = progress.New(progress.WithDefaultGradient())
-	}
-	return model{
-		sources:      srcs,
-		progressBars: pBars,
-		total:        0,
-	}
-}
+var (
+	titleStyle = lipgloss.NewStyle().Bold(true)
+	okStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	runStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+)
 
-func banner() {
-	ascii := `
+/* ===================== BANNER ===================== */
+
+func banner() string {
+	return `
 ██╗     ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
 ██║     ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
 ██║     ██║   ██║   ██║   ██║██║     █████╗  ███████║██╔██╗ ██║
 ██║     ██║   ██║   ██║   ██║██║     ██╔══╝  ██╔══██║██║╚██╗██║
 ███████╗██║   ██║   ╚██████╔╝╚██████╗███████╗██║  ██║██║ ╚████║
 ╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+
+☠️🌊 LITOCEAN‑GX 🌊☠️
+Developed by Biswajeet Ray
+====================================================
 `
-	for _, c := range ascii {
-		fmt.Print(string(c))
-		time.Sleep(1 * time.Millisecond)
-	}
-	fmt.Println("\n☠️🌊 LITOCEAN-GX 🌊☠️")
-	fmt.Println("Developed by Biswajeet Ray")
-	fmt.Println(strings.Repeat("=", 60))
 }
 
-// helper to add unique subdomain
-var mu sync.Mutex
-var results = make(map[string]bool)
+/* ===================== INIT ===================== */
 
-func addResult(sub string) {
-	mu.Lock()
-	defer mu.Unlock()
-	results[sub] = true
+func initialModel() model {
+	names := []string{
+		"AlienVault", "crt.sh", "HackerTarget", "CertSpotter",
+		"Anubis", "URLScan", "VirusTotal",
+		"subfinder", "assetfinder", "amass", "findomain",
+	}
+
+	var srcs []source
+	for _, n := range names {
+		srcs = append(srcs, source{
+			Name:     n,
+			Status:   "Waiting",
+			Progress: 0,
+		})
+	}
+	return model{Sources: srcs}
 }
 
-// fetch API and update counts live
-func fetchAlienvault(domain string, ch chan source) {
-	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
-	resp, err := http.Get(url)
-	if err != nil {
-		ch <- source{"AlienVault", 0, "Error"}
-		return
-	}
-	defer resp.Body.Close()
-	var data map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&data)
-	items, ok := data["passive_dns"].([]interface{})
-	c := 0
-	if ok {
-		for _, v := range items {
-			host := v.(map[string]interface{})["hostname"].(string)
-			addResult(host)
-			c++
-		}
-	}
-	ch <- source{"AlienVault", c, "Done"}
-}
+/* ===================== TEA ===================== */
 
-// helper to run local CLI tool
-func runTool(name string, args ...string) source {
-	cmd := exec.Command(name, args...)
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return source{name, 0, "Error"}
-	}
-	cmd.Start()
-	sc := bufio.NewScanner(out)
-	c := 0
-	for sc.Scan() {
-		addResult(sc.Text())
-		c++
-	}
-	cmd.Wait()
-	if err != nil {
-		return source{name, c, "Error"}
-	}
-	return source{name, c, "Done"}
-}
-
-// BubbleTea update loop
-func (m model) Init() tea.Cmd {
-	return nil
-}
+func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if s, ok := msg.(source); ok {
+		for i := range m.Sources {
+			if m.Sources[i].Name == s.Name {
+				m.Sources[i] = s
+			}
+		}
+	}
 	return m, nil
 }
 
 func (m model) View() string {
-	s := bannerText()
-	for _, src := range m.sources {
-		bar := m.progressBars[src.name].View()
-		s += fmt.Sprintf("%-15s [%s] → %d subdomains\n", src.name, src.status, src.count)
-		s += bar + "\n"
+	var b strings.Builder
+	b.WriteString(banner())
+
+	for _, s := range m.Sources {
+		bar := progress.New(progress.WithDefaultGradient()).ViewAs(s.Progress)
+		status := runStyle.Render(s.Status)
+		if s.Status == "Done" {
+			status = okStyle.Render("Done")
+		}
+		fmt.Fprintf(&b, "%-14s %s %4d  %s\n", s.Name, status, s.Count, bar)
 	}
-	s += fmt.Sprintf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
-	return s
+
+	fmt.Fprintf(&b, "\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
+	b.WriteString("\nPress CTRL+C to exit\n")
+	return b.String()
 }
 
-func bannerText() string {
-	return `
-☠️🌊 LITOCEAN-GX 🌊☠️
-Developed by Biswajeet Ray
-============================================================
-`
+/* ===================== API FUNCTIONS ===================== */
+
+func alienvault(domain string, ch chan source) {
+	s := source{Name: "AlienVault", Status: "Running"}
+	ch <- s
+
+	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var data map[string][]map[string]string
+	json.NewDecoder(resp.Body).Decode(&data)
+
+	for _, v := range data["passive_dns"] {
+		add(v["hostname"])
+		s.Count++
+		s.Progress += 0.02
+		ch <- s
+	}
+	s.Status = "Done"
+	s.Progress = 1
+	ch <- s
 }
+
+func crtsh(domain string, ch chan source) {
+	s := source{Name: "crt.sh", Status: "Running"}
+	ch <- s
+
+	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
+	resp, _ := http.Get(url)
+	defer resp.Body.Close()
+
+	var data []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&data)
+
+	for _, d := range data {
+		names := strings.Split(d["name_value"].(string), "\n")
+		for _, n := range names {
+			add(strings.TrimPrefix(n, "*."))
+			s.Count++
+			s.Progress += 0.01
+			ch <- s
+		}
+	}
+	s.Status = "Done"
+	s.Progress = 1
+	ch <- s
+}
+
+/* ===================== LOCAL TOOLS ===================== */
+
+func runTool(name string, args []string, ch chan source) {
+	s := source{Name: name, Status: "Running"}
+	ch <- s
+
+	cmd := exec.Command(name, args...)
+	out, _ := cmd.StdoutPipe()
+	cmd.Start()
+
+	sc := bufio.NewScanner(out)
+	for sc.Scan() {
+		add(sc.Text())
+		s.Count++
+		s.Progress += 0.02
+		ch <- s
+	}
+	cmd.Wait()
+	s.Status = "Done"
+	s.Progress = 1
+	ch <- s
+}
+
+/* ===================== MAIN ===================== */
 
 func main() {
 	if len(os.Args) < 3 || os.Args[1] != "-d" {
 		fmt.Println("Usage: LitOcean -d example.com")
 		return
 	}
+
 	domain := os.Args[2]
-
-	// initial banner
-	banner()
-
-	// create BubbleTea program
-	p := tea.NewProgram(initialModel())
 	ch := make(chan source)
 
-	// start fetching APIs
-	go fetchAlienvault(domain, ch)
-	// similarly add crt.sh, HackerTarget, etc in parallel...
+	p := tea.NewProgram(initialModel())
+	go p.Start()
 
-	// run local tools in parallel
-	var wg sync.WaitGroup
-	localTools := []struct {
-		name string
-		args []string
-	}{
-		{"subfinder", []string{"-d", domain, "-silent"}},
-		{"assetfinder", []string{"--subs-only", domain}},
-		{"amass", []string{"enum", "-passive", "-d", domain}},
-		{"findomain", []string{"-t", domain, "-q"}},
+	go alienvault(domain, ch)
+	go crtsh(domain, ch)
+
+	go runTool("subfinder", []string{"-d", domain, "-silent"}, ch)
+	go runTool("assetfinder", []string{"--subs-only", domain}, ch)
+	go runTool("amass", []string{"enum", "-passive", "-d", domain}, ch)
+	go runTool("findomain", []string{"-t", domain, "-q"}, ch)
+
+	for s := range ch {
+		p.Send(s)
+		time.Sleep(20 * time.Millisecond)
 	}
-
-	for _, t := range localTools {
-		wg.Add(1)
-		go func(tool string, args []string) {
-			defer wg.Done()
-			res := runTool(tool, args...)
-			ch <- res
-		}(t.name, t.args)
-	}
-
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
-	// update BubbleTea model from channel
-	go func() {
-		m := initialModel()
-		for s := range ch {
-			for i := range m.sources {
-				if m.sources[i].name == s.name {
-					m.sources[i] = s
-				}
-			}
-			m.total = len(results)
-			p.Send(m)
-		}
-	}()
-
-	p.Start()
 }
