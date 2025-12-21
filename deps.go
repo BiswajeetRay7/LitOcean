@@ -11,3 +11,4 @@ func ensureHTTPX() {
 		"github.com/projectdiscovery/httpx/cmd/httpx@latest",
 	).Run()
 }
+ 
