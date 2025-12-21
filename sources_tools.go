@@ -24,3 +24,4 @@ func RunTool(name string, args []string, p *tea.Program) {
 	cmd.Wait()
 	update(p, name, count, "Done")
 }
+ 
