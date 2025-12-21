@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -37,9 +37,7 @@ func RunAlienVault(domain string, p *tea.Program) {
 	defer resp.Body.Close()
 
 	var data struct {
-		Passive []struct {
-			Hostname string `json:"hostname"`
-		} `json:"passive_dns"`
+		Passive []struct{ Hostname string } `json:"passive_dns"`
 	}
 	json.NewDecoder(resp.Body).Decode(&data)
 
