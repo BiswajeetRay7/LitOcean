@@ -4,26 +4,26 @@ import "sync"
 
 type Engine struct {
 	Paused bool
-	Mu     sync.Mutex
+	mu     sync.Mutex
 }
 
 func (e *Engine) Pause() {
-	e.Mu.Lock()
+	e.mu.Lock()
 	e.Paused = true
-	e.Mu.Unlock()
+	e.mu.Unlock()
 }
 
 func (e *Engine) Resume() {
-	e.Mu.Lock()
+	e.mu.Lock()
 	e.Paused = false
-	e.Mu.Unlock()
+	e.mu.Unlock()
 }
 
 func (e *Engine) Wait() {
 	for {
-		e.Mu.Lock()
+		e.mu.Lock()
 		p := e.Paused
-		e.Mu.Unlock()
+		e.mu.Unlock()
 		if !p {
 			return
 		}
