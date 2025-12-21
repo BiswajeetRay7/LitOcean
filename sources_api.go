@@ -27,7 +27,11 @@ func update(p *tea.Program, name string, count int, status string) {
 
 func RunAlienVault(domain string, p *tea.Program) {
 	update(p, "AlienVault", 0, "Running")
-	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
+
+	url := fmt.Sprintf(
+		"https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns",
+		domain,
+	)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -37,20 +41,24 @@ func RunAlienVault(domain string, p *tea.Program) {
 	defer resp.Body.Close()
 
 	var data struct {
-		Passive []struct{ Hostname string } `json:"passive_dns"`
+		Passive []struct {
+			Hostname string `json:"hostname"`
+		} `json:"passive_dns"`
 	}
+
 	json.NewDecoder(resp.Body).Decode(&data)
 
 	for _, h := range data.Passive {
 		addSub(h.Hostname)
 	}
+
 	update(p, "AlienVault", len(data.Passive), "Done")
 }
 
 func RunCrtSh(domain string, p *tea.Program) {
 	update(p, "crt.sh", 0, "Running")
-	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
 
+	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
 	resp, _ := http.Get(url)
 	defer resp.Body.Close()
 
@@ -64,13 +72,14 @@ func RunCrtSh(domain string, p *tea.Program) {
 			count++
 		}
 	}
+
 	update(p, "crt.sh", count, "Done")
 }
 
 func RunHackerTarget(domain string, p *tea.Program) {
 	update(p, "HackerTarget", 0, "Running")
-	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)
 
+	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)
 	resp, _ := http.Get(url)
 	defer resp.Body.Close()
 
@@ -80,5 +89,6 @@ func RunHackerTarget(domain string, p *tea.Program) {
 		addSub(strings.Split(sc.Text(), ",")[0])
 		count++
 	}
+
 	update(p, "HackerTarget", count, "Done")
 }
