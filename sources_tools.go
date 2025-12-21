@@ -8,14 +8,10 @@ import (
 )
 
 func RunTool(name string, args []string, p *tea.Program) {
-	updateSource(name, 0, "Running", p)
+	update(p, name, 0, "Running")
 
 	cmd := exec.Command(name, args...)
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		updateSource(name, 0, "Error", p)
-		return
-	}
+	out, _ := cmd.StdoutPipe()
 	cmd.Start()
 
 	sc := bufio.NewScanner(out)
@@ -26,5 +22,5 @@ func RunTool(name string, args []string, p *tea.Program) {
 	}
 
 	cmd.Wait()
-	updateSource(name, count, "Done", p)
+	update(p, name, count, "Done")
 }
