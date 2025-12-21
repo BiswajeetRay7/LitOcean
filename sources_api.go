@@ -1,94 +1,73 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-var results = map[string]bool{}
-var resultsMu = &sync.Mutex{}
-
-func addSub(s string) {
-	s = strings.TrimPrefix(s, "*.")
-	resultsMu.Lock()
-	results[s] = true
-	resultsMu.Unlock()
-}
-
-func update(p *tea.Program, name string, count int, status string) {
-	p.Send(Source{Name: name, Count: count, Status: status})
-}
-
-func RunAlienVault(domain string, p *tea.Program) {
-	update(p, "AlienVault", 0, "Running")
-
-	url := fmt.Sprintf(
-		"https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns",
-		domain,
-	)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		update(p, "AlienVault", 0, "Error")
-		return
-	}
-	defer resp.Body.Close()
-
-	var data struct {
-		Passive []struct {
-			Hostname string `json:"hostname"`
-		} `json:"passive_dns"`
-	}
-
-	json.NewDecoder(resp.Body).Decode(&data)
-
-	for _, h := range data.Passive {
-		addSub(h.Hostname)
-	}
-
-	update(p, "AlienVault", len(data.Passive), "Done")
-}
 
 func RunCrtSh(domain string, p *tea.Program) {
 	update(p, "crt.sh", 0, "Running")
 
 	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
-	resp, _ := http.Get(url)
+	resp, err := http.Get(url)
+	if err != nil || resp == nil {
+		update(p, "crt.sh", 0, "Error")
+		return
+	}
 	defer resp.Body.Close()
 
 	var data []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&data)
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		update(p, "crt.sh", 0, "Error")
+		return
+	}
 
 	count := 0
 	for _, e := range data {
-		for _, n := range strings.Split(e["name_value"].(string), "\n") {
-			addSub(n)
-			count++
+		if v, ok := e["name_value"].(string); ok {
+			for _, s := range strings.Split(v, "\n") {
+				addSub(s)
+				count++
+			}
 		}
 	}
-
 	update(p, "crt.sh", count, "Done")
 }
 
-func RunHackerTarget(domain string, p *tea.Program) {
-	update(p, "HackerTarget", 0, "Running")
+func RunWayback(domain string, p *tea.Program) {
+	update(p, "wayback", 0, "Running")
 
-	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)
-	resp, _ := http.Get(url)
+	url := fmt.Sprintf(
+		"https://web.archive.org/cdx/search/cdx?url=*.%s/*&output=json&fl=original&collapse=urlkey",
+		domain,
+	)
+
+	resp, err := http.Get(url)
+	if err != nil || resp == nil {
+		update(p, "wayback", 0, "Error")
+		return
+	}
 	defer resp.Body.Close()
 
-	sc := bufio.NewScanner(resp.Body)
-	count := 0
-	for sc.Scan() {
-		addSub(strings.Split(sc.Text(), ",")[0])
-		count++
+	var rows [][]string
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		update(p, "wayback", 0, "Error")
+		return
 	}
 
-	update(p, "HackerTarget", count, "Done")
+	count := 0
+	for _, r := range rows {
+		if len(r) > 0 {
+			host := strings.Split(strings.TrimPrefix(r[0], "http"), "/")[0]
+			host = strings.TrimPrefix(host, "s://")
+			host = strings.TrimPrefix(host, "://")
+			addSub(host)
+			count++
+		}
+	}
+	update(p, "wayback", count, "Done")
 }
