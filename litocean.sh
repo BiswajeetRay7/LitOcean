@@ -2,184 +2,204 @@
 
 # ============================================================
 # 🌊⭐ LITOCEAN ⭐🌊
-# Ocean + Star Subdomain Enumeration Framework
+# Fast Parallel Subdomain Enumeration (Bash)
 # Developed by Biswajeet Ray
 # ============================================================
 
-set -euo pipefail
+set -u
 
 # ---------------- COLORS ----------------
-BLUE="\033[38;5;39m"
-CYAN="\033[38;5;51m"
-GREEN="\033[38;5;82m"
-YELLOW="\033[38;5;220m"
-PINK="\033[38;5;213m"
-GRAY="\033[38;5;245m"
+CYAN="\033[36m"
+GREEN="\033[32m"
+BLUE="\033[34m"
+YELLOW="\033[33m"
+GRAY="\033[90m"
+RED="\033[31m"
 RESET="\033[0m"
 
-# ---------------- MAIN ASCII ----------------
-MAIN_ASCII="
-${CYAN}
-██╗     ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
-██║     ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
-██║     ██║   ██║   ██║   ██║██║     █████╗  ███████║██╔██╗ ██║
-██║     ██║   ██║   ██║   ██║██║     ██╔══╝  ██╔══██║██║╚██╗██║
+# ---------------- TRAP (CTRL+C) ----------------
+trap 'echo -e "\n${RED}[!] Interrupted by user. Killing processes...${RESET}"; kill $(jobs -p) 2>/dev/null; exit 1' SIGINT SIGTERM
+
+# ---------------- ASCII ART ----------------
+show_banner() {
+    clear
+    cat << "EOF"
+██╗      ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
+██║      ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
+██║      ██║   ██║   ██║   ██║██║      █████╗  ███████║██╔██╗ ██║
+██║      ██║   ██║   ██║   ██║██║     ██╔══╝ ██╔══██║██║╚██╗██║
 ███████╗██║   ██║   ╚██████╔╝╚██████╗███████╗██║  ██║██║ ╚████║
-╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝
-${RESET}
-"
+╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝   ╚═══╝
 
-# ---------------- CUTE OCEAN ASCII ----------------
-CUTE_ASCII="
-${CYAN}
-      ⭐      🌊        ⭐
-   🌊      ⭐    🌊
-        __/\\__
-   ⭐   \\    /   🌊
-        /____\\
-   🌊   \\    /   ⭐
-        /____\\
-      ⭐      🌊        ⭐
-${RESET}
-
-${BLUE}🌊 L I T O C E A N 🌊${RESET}
-${PINK}Cute Ocean Subdomain Hunter${RESET}
-${GRAY}Developed by Biswajeet Ray${RESET}
-"
-
-# ---------------- ANIMATIONS ----------------
-wave_loader() {
-  local pid=$!
-  local frames=("🌊   " " 🌊  " "  🌊 " "   🌊" "  🌊 " " 🌊  ")
-  local i=0
-  while kill -0 "$pid" 2>/dev/null; do
-    echo -ne "${CYAN}[${frames[i]}] scanning ocean...${RESET}\r"
-    i=$(( (i + 1) % ${#frames[@]} ))
-    sleep 0.2
-  done
-  echo -ne "\r"
-}
-
-star_bar() {
-  local total=$1
-  local done=$2
-  local stars=$(( done * 10 / total ))
-  printf "${YELLOW}"
-  for ((i=0;i<stars;i++)); do printf "⭐"; done
-  for ((i=stars;i<10;i++)); do printf "·"; done
-  printf "${RESET}"
+🌊 Ocean + Star Subdomain Hunter v2.0
+Developed by Biswajeet Ray
+EOF
 }
 
 # ---------------- HELP ----------------
 usage() {
-  clear
-  echo -e "$MAIN_ASCII"
-  echo -e "$CUTE_ASCII"
+  show_banner
   echo
-  echo -e "${BLUE}Usage:${RESET}"
-  echo "  ./litocean.sh -d example.com"
-  echo "  ./litocean.sh -l domains.txt"
+  echo -e "${YELLOW}Usage:${RESET}"
+  echo "  $0 -d example.com      (Single Target)"
+  echo "  $0 -l domains.txt      (List of Targets)"
+  echo
   exit 0
 }
 
-# ---------------- DEPENDENCIES ----------------
-need() { command -v "$1" >/dev/null 2>&1; }
-
-install_go_tool() {
-  echo -e "${YELLOW}✨ Installing $1...${RESET}"
-  go install "$2@latest"
+# ---------------- DEPENDENCY CHECK ----------------
+need() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo -e "${RED}[!] Critical: Missing dependency '$1'. Please install it.${RESET}"
+    exit 1
+  fi
 }
 
-ensure_tools() {
-  need go || { echo "Go missing"; exit 1; }
-  for t in subfinder amass assetfinder chaos findomain httpx anew jq curl; do
-    if ! need "$t"; then
-      case "$t" in
-        subfinder) install_go_tool subfinder github.com/projectdiscovery/subfinder/v2/cmd/subfinder ;;
-        amass) install_go_tool amass github.com/owasp-amass/amass/v4/cmd/amass ;;
-        assetfinder) install_go_tool assetfinder github.com/tomnomnom/assetfinder ;;
-        chaos) install_go_tool chaos github.com/projectdiscovery/chaos-client/cmd/chaos ;;
-        httpx) install_go_tool httpx github.com/projectdiscovery/httpx/cmd/httpx ;;
-        anew) install_go_tool anew github.com/tomnomnom/anew ;;
-        findomain)
-          echo -e "${YELLOW}✨ Installing findomain...${RESET}"
-          curl -sL https://github.com/findomain/findomain/releases/latest/download/findomain-linux -o findomain
-          chmod +x findomain
-          sudo mv findomain /usr/local/bin/
-          ;;
-        *) echo "Missing $t"; exit 1 ;;
-      esac
-    fi
-  done
-}
+# Check all required tools
+for dep in curl jq subfinder amass assetfinder findomain httpx anew; do
+  need "$dep"
+done
 
-# ---------------- ARGS ----------------
+# ---------------- ARGS PARSING ----------------
 DOMAIN=""
 LIST=""
+
 while getopts "d:l:h" opt; do
-  case $opt in
+  case "$opt" in
     d) DOMAIN="$OPTARG" ;;
     l) LIST="$OPTARG" ;;
     h) usage ;;
+    *) usage ;;
   esac
 done
+
 [[ -z "$DOMAIN" && -z "$LIST" ]] && usage
 
-# ---------------- START ----------------
-clear
-echo -e "$MAIN_ASCII"
-echo -e "$CUTE_ASCII"
+show_banner
 
-ensure_tools
+# ---------------- HELPER FUNCTIONS ----------------
 
-WORKDIR="litocean-output"
-SUBS="$WORKDIR/subs.txt"
-ALIVE="$WORKDIR/alive.txt"
-mkdir -p "$WORKDIR"
-> "$SUBS"
-> "$ALIVE"
-
-TOOLS_TOTAL=7
-TOOLS_DONE=0
-
-run_step() {
-  local name="$1"
-  local cmd="$2"
-  echo -ne "${BLUE}➜ $name ${GRAY}"
-  eval "$cmd" & wave_loader
-  TOOLS_DONE=$((TOOLS_DONE + 1))
-  echo -ne "\r${GREEN}✔ $name ${RESET} "
-  star_bar "$TOOLS_TOTAL" "$TOOLS_DONE"
-  echo
+# Query CRT.SH with timeout and error handling
+crtsh() {
+  local target="$1"
+  # Timeout set to 15 seconds to prevent hanging
+  curl -s --max-time 20 "https://crt.sh/?q=%25.$target&output=json" \
+    | jq -r '.. | .name_value? // empty' 2>/dev/null \
+    | sed 's/\*\.//g' \
+    | grep -i "$target" || true
 }
 
-enumerate() {
-  local d="$1"
-  echo -e "\n${PINK}🌊 Exploring ocean for: $d 🌊${RESET}"
-
-  run_step "crt.sh" \
-    "curl -s 'https://crt.sh/?q=%25.$d&output=json' | jq -r '.[].name_value' | sed 's/\*\.//g' | anew '$SUBS'"
-
-  run_step "wayback" \
-    "curl -s 'https://web.archive.org/cdx/search/cdx?url=*.$d/*&output=json&fl=original&collapse=urlkey' | jq -r '.[][].?' | sed -E 's_https?://([^/]+)/.*_\\1_' | grep '$d' | anew '$SUBS'"
-
-  run_step "subfinder" "subfinder -d '$d' -all -silent | anew '$SUBS'"
-  run_step "amass" "amass enum -passive -d '$d' | anew '$SUBS'"
-  run_step "assetfinder" "assetfinder --subs-only '$d' | anew '$SUBS'"
-  run_step "chaos" "chaos -d '$d' -silent | anew '$SUBS'"
-  run_step "findomain" "findomain -t '$d' -q | anew '$SUBS'"
+# Query Wayback Machine with timeout
+wayback() {
+  local target="$1"
+  curl -s --max-time 20 "https://web.archive.org/cdx/search/cdx?url=*.$target/*&output=json" \
+    | jq -r '.[1:][].[]' 2>/dev/null \
+    | sed -E 's_https?://([^/]+)/.*_\1_' \
+    | grep -i "$target" || true
 }
+
+# ---------------- CORE LOGIC ----------------
+
+process_target() {
+    local target="$1"
+    
+    # Create unique workspace per domain
+    local BASE_DIR="litocean_results/${target}"
+    local TMP_DIR="$BASE_DIR/tmp"
+    local SUBS_FILE="$BASE_DIR/all_subs.txt"
+    local ALIVE_FILE="$BASE_DIR/alive.txt"
+
+    mkdir -p "$TMP_DIR"
+    : > "$SUBS_FILE"
+
+    echo -e "\n${CYAN}==========================================${RESET}"
+    echo -e "${CYAN}[*] Targeting Domain: ${YELLOW}$target${RESET}"
+    echo -e "${CYAN}==========================================${RESET}"
+
+    echo -e "${BLUE}[*] Launching parallel enumeration tools...${RESET}"
+
+    # 1. CRT.SH
+    { 
+      crtsh "$target" | anew "$TMP_DIR/crt.txt" >/dev/null
+    } &
+
+    # 2. Wayback
+    { 
+      wayback "$target" | anew "$TMP_DIR/wayback.txt" >/dev/null 
+    } &
+
+    # 3. Subfinder
+    { 
+      subfinder -d "$target" -all -silent 2>/dev/null > "$TMP_DIR/subfinder.txt" 
+    } &
+
+    # 4. Assetfinder
+    { 
+      assetfinder --subs-only "$target" > "$TMP_DIR/assetfinder.txt" 
+    } &
+
+    # 5. Findomain
+    { 
+      findomain -t "$target" -q 2>/dev/null > "$TMP_DIR/findomain.txt" 
+    } &
+
+    # 6. Amass (With timeout of 5 minutes to prevent stalling)
+    { 
+      timeout 5m amass enum -passive -d "$target" -timeout 5 2>/dev/null > "$TMP_DIR/amass.txt" || true
+    } &
+
+    # Wait for all background jobs to finish
+    wait
+
+    echo -e "${BLUE}[*] Aggregating results...${RESET}"
+    
+    # Merge all results using anew to remove duplicates
+    cat "$TMP_DIR"/*.txt 2>/dev/null | anew "$SUBS_FILE" >/dev/null
+
+    # Check if we found anything
+    local count=$(wc -l < "$SUBS_FILE")
+    if [[ "$count" -eq 0 ]]; then
+        echo -e "${RED}[!] No subdomains found for $target.${RESET}"
+        rm -rf "$TMP_DIR"
+        return
+    fi
+    echo -e "${GREEN}[+] Unique Subdomains found: $count${RESET}"
+
+    # Probing with HTTPX
+    echo -e "${BLUE}[*] Probing for alive hosts (HTTP/HTTPS)...${RESET}"
+    httpx -l "$SUBS_FILE" -silent -threads 100 -timeout 5 | anew "$ALIVE_FILE" >/dev/null
+
+    local alive_count=$(wc -l < "$ALIVE_FILE")
+    
+    # Summary
+    echo -e "${GREEN}------------------------------------------${RESET}"
+    echo -e "${GREEN}[✓] Scan Completed for $target${RESET}"
+    echo -e "    - Total Subs : $count"
+    echo -e "    - Alive URLs : $alive_count"
+    echo -e "    - File Saved : $ALIVE_FILE"
+    echo -e "${GREEN}------------------------------------------${RESET}"
+
+    # Cleanup Tmp
+    rm -rf "$TMP_DIR"
+}
+
+# ---------------- EXECUTION FLOW ----------------
 
 if [[ -n "$DOMAIN" ]]; then
-  enumerate "$DOMAIN"
-else
-  while read -r d; do enumerate "$d"; done < "$LIST"
+    process_target "$DOMAIN"
+elif [[ -n "$LIST" ]]; then
+    if [[ ! -f "$LIST" ]]; then
+        echo -e "${RED}[!] File not found: $LIST${RESET}"
+        exit 1
+    fi
+    echo -e "${BLUE}[*] Reading from list: $LIST${RESET}"
+    while read -r line; do
+        # cleanup whitespace
+        target=$(echo "$line" | xargs)
+        if [[ -n "$target" ]]; then
+            process_target "$target"
+        fi
+    done < "$LIST"
 fi
 
-echo -e "\n${CYAN}🌟 Total subdomains: $(wc -l < "$SUBS")${RESET}"
-echo -e "${BLUE}🌊 Checking alive hosts...${RESET}"
-
-cat "$SUBS" | httpx -silent -threads 200 | anew "$ALIVE"
-
-echo -e "${GREEN}⭐ Alive hosts: $(wc -l < "$ALIVE")${RESET}"
-echo -e "${PINK}✨ Results saved in $WORKDIR ✨${RESET}"
+echo -e "\n${CYAN}🌊 LITOCEAN Execution Finished.${RESET}"
