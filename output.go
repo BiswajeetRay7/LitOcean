@@ -18,6 +18,7 @@ func saveSubs(file string) {
 
 	f, _ := os.Create(file)
 	defer f.Close()
+
 	for _, s := range subs {
 		f.WriteString(s + "\n")
 	}
@@ -28,6 +29,7 @@ func exportAll() {
 	saveSubs("subs.txt")
 	saveDiff(prev, results)
 	ensureHTTPX()
+
 	exec.Command(
 		"httpx",
 		"-l", "subs.txt",
