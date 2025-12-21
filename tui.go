@@ -19,21 +19,23 @@ type Model struct {
 	Sources   []Source
 	Cursor    int
 	StartTime time.Time
-	Dark      bool
 }
 
-func stars(s string) string {
-	if s == "Done" {
+func stars(status string) string {
+	switch status {
+	case "Done":
 		return "⭐⭐⭐"
-	}
-	if s == "Running" {
+	case "Running":
 		return "⭐⭐☆"
+	default:
+		return "⭐☆☆"
 	}
-	return "⭐☆☆"
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return t })
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return t
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -66,8 +68,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			engine.Resume()
 		case "e":
 			exportAll()
-		case "t":
-			m.Dark = !m.Dark
 		case "q":
 			return m, tea.Quit
 		}
@@ -84,15 +84,21 @@ func (m Model) View() string {
 	out += fmt.Sprintf("⏱ Elapsed: %s\n\n", time.Since(m.StartTime).Truncate(time.Second))
 
 	for i, s := range m.Sources {
-		cur := " "
+		cursor := " "
 		if i == m.Cursor {
-			cur = "➤"
+			cursor = "➤"
 		}
-		out += fmt.Sprintf("%s %-14s %s %-8s %d\n",
-			cur, s.Name, stars(s.Status), s.Status, s.Count)
+		out += fmt.Sprintf(
+			"%s %-14s %s %-8s %d\n",
+			cursor,
+			s.Name,
+			stars(s.Status),
+			s.Status,
+			s.Count,
+		)
 	}
 
 	out += fmt.Sprintf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
-	out += "\nKeys: ↑↓ scroll | s sort | e export | t theme | p pause | r resume | q quit\n"
+	out += "\nKeys: ↑↓ scroll | s sort | e export | p pause | r resume | q quit\n"
 	return out
 }
