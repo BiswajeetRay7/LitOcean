@@ -11,12 +11,43 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/progress"
 )
 
-var (
-	results = make(map[string]bool)
-	mu      sync.Mutex
-)
+type source struct {
+	name   string
+	count  int
+	status string
+}
+
+type model struct {
+	sources []source
+	total   int
+	progressBars map[string]progress.Model
+}
+
+func initialModel() model {
+	srcs := []source{
+		{"AlienVault", 0, "Pending"},
+		{"crt.sh", 0, "Pending"},
+		{"HackerTarget", 0, "Pending"},
+		{"Subfinder", 0, "Pending"},
+		{"Assetfinder", 0, "Pending"},
+		{"Amass", 0, "Pending"},
+		{"Findomain", 0, "Pending"},
+	}
+	pBars := make(map[string]progress.Model)
+	for _, s := range srcs {
+		pBars[s.name] = progress.New(progress.WithDefaultGradient())
+	}
+	return model{
+		sources:      srcs,
+		progressBars: pBars,
+		total:        0,
+	}
+}
 
 func banner() {
 	ascii := `
@@ -29,13 +60,16 @@ func banner() {
 `
 	for _, c := range ascii {
 		fmt.Print(string(c))
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
-	fmt.Println("☠️🌊 LITOCEAN-GX 🌊☠️")
-	fmt.Println("Ultimate Subdomain Enumeration Engine")
+	fmt.Println("\n☠️🌊 LITOCEAN-GX 🌊☠️")
 	fmt.Println("Developed by Biswajeet Ray")
 	fmt.Println(strings.Repeat("=", 60))
 }
+
+// helper to add unique subdomain
+var mu sync.Mutex
+var results = make(map[string]bool)
 
 func addResult(sub string) {
 	mu.Lock()
@@ -43,100 +77,37 @@ func addResult(sub string) {
 	results[sub] = true
 }
 
-func count(label string, n int) {
-	fmt.Printf("✅ %-15s → %d subdomains\n", label, n)
-}
-
-func fetchLines(url string, parser func(string) []string) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	lines := parser(string(body))
-	for _, s := range lines {
-		addResult(s)
-	}
-	count(url, len(lines))
-}
-
-func alienvault(domain string) {
+// fetch API and update counts live
+func fetchAlienvault(domain string, ch chan source) {
 	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
 	resp, err := http.Get(url)
 	if err != nil {
+		ch <- source{"AlienVault", 0, "Error"}
 		return
 	}
 	defer resp.Body.Close()
-
 	var data map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&data)
-
 	items, ok := data["passive_dns"].([]interface{})
-	if !ok {
-		return
-	}
-
 	c := 0
-	for _, v := range items {
-		m := v.(map[string]interface{})
-		host := m["hostname"].(string)
-		addResult(host)
-		c++
-	}
-	count("AlienVault", c)
-}
-
-func crtsh(domain string) {
-	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	var data []map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&data)
-
-	c := 0
-	for _, e := range data {
-		names := strings.Split(e["name_value"].(string), "\n")
-		for _, n := range names {
-			n = strings.TrimPrefix(n, "*.")
-			addResult(n)
+	if ok {
+		for _, v := range items {
+			host := v.(map[string]interface{})["hostname"].(string)
+			addResult(host)
 			c++
 		}
 	}
-	count("crt.sh", c)
+	ch <- source{"AlienVault", c, "Done"}
 }
 
-func hackertarget(domain string) {
-	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	sc := bufio.NewScanner(resp.Body)
-	c := 0
-	for sc.Scan() {
-		parts := strings.Split(sc.Text(), ",")
-		addResult(parts[0])
-		c++
-	}
-	count("HackerTarget", c)
-}
-
-func runTool(name string, args ...string) {
+// helper to run local CLI tool
+func runTool(name string, args ...string) source {
 	cmd := exec.Command(name, args...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return
+		return source{name, 0, "Error"}
 	}
 	cmd.Start()
-
 	sc := bufio.NewScanner(out)
 	c := 0
 	for sc.Scan() {
@@ -144,15 +115,38 @@ func runTool(name string, args ...string) {
 		c++
 	}
 	cmd.Wait()
-	count(strings.ToUpper(name), c)
+	if err != nil {
+		return source{name, c, "Error"}
+	}
+	return source{name, c, "Done"}
 }
 
-func install(tool string, cmd string) {
-	if _, err := exec.LookPath(tool); err == nil {
-		return
+// BubbleTea update loop
+func (m model) Init() tea.Cmd {
+	return nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	return m, nil
+}
+
+func (m model) View() string {
+	s := bannerText()
+	for _, src := range m.sources {
+		bar := m.progressBars[src.name].View()
+		s += fmt.Sprintf("%-15s [%s] → %d subdomains\n", src.name, src.status, src.count)
+		s += bar + "\n"
 	}
-	fmt.Println("⬇️ Installing", tool)
-	exec.Command("bash", "-c", cmd).Run()
+	s += fmt.Sprintf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
+	return s
+}
+
+func bannerText() string {
+	return `
+☠️🌊 LITOCEAN-GX 🌊☠️
+Developed by Biswajeet Ray
+============================================================
+`
 }
 
 func main() {
@@ -160,39 +154,58 @@ func main() {
 		fmt.Println("Usage: LitOcean -d example.com")
 		return
 	}
-
 	domain := os.Args[2]
+
+	// initial banner
 	banner()
 
-	fmt.Println("🔧 Checking & installing dependencies...")
-	install("subfinder", "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")
-	install("assetfinder", "go install github.com/tomnomnom/assetfinder@latest")
-	install("amass", "sudo apt install -y amass")
-	install("findomain", "curl -LO https://github.com/findomain/findomain/releases/latest/download/findomain-linux && chmod +x findomain-linux && sudo mv findomain-linux /usr/bin/findomain")
+	// create BubbleTea program
+	p := tea.NewProgram(initialModel())
+	ch := make(chan source)
 
-	fmt.Println("🚀 Starting enumeration...\n")
+	// start fetching APIs
+	go fetchAlienvault(domain, ch)
+	// similarly add crt.sh, HackerTarget, etc in parallel...
 
+	// run local tools in parallel
 	var wg sync.WaitGroup
-
-	wg.Add(3)
-	go func() { defer wg.Done(); alienvault(domain) }()
-	go func() { defer wg.Done(); crtsh(domain) }()
-	go func() { defer wg.Done(); hackertarget(domain) }()
-	wg.Wait()
-
-	fmt.Println("\n⚙️ Running local tools...\n")
-
-	runTool("subfinder", "-d", domain, "-silent")
-	runTool("assetfinder", "--subs-only", domain)
-	runTool("amass", "enum", "-passive", "-d", domain)
-	runTool("findomain", "-t", domain, "-q")
-
-	fmt.Println("\n📦 FINAL RESULTS")
-	fmt.Println(strings.Repeat("-", 40))
-
-	for s := range results {
-		fmt.Println(s)
+	localTools := []struct {
+		name string
+		args []string
+	}{
+		{"subfinder", []string{"-d", domain, "-silent"}},
+		{"assetfinder", []string{"--subs-only", domain}},
+		{"amass", []string{"enum", "-passive", "-d", domain}},
+		{"findomain", []string{"-t", domain, "-q"}},
 	}
 
-	fmt.Printf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
+	for _, t := range localTools {
+		wg.Add(1)
+		go func(tool string, args []string) {
+			defer wg.Done()
+			res := runTool(tool, args...)
+			ch <- res
+		}(t.name, t.args)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	// update BubbleTea model from channel
+	go func() {
+		m := initialModel()
+		for s := range ch {
+			for i := range m.sources {
+				if m.sources[i].name == s.name {
+					m.sources[i] = s
+				}
+			}
+			m.total = len(results)
+			p.Send(m)
+		}
+	}()
+
+	p.Start()
 }
