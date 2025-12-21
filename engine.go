@@ -7,8 +7,17 @@ type Engine struct {
 	Mu     sync.Mutex
 }
 
-func (e *Engine) Pause()  { e.Mu.Lock(); e.Paused = true; e.Mu.Unlock() }
-func (e *Engine) Resume() { e.Mu.Lock(); e.Paused = false; e.Mu.Unlock() }
+func (e *Engine) Pause() {
+	e.Mu.Lock()
+	e.Paused = true
+	e.Mu.Unlock()
+}
+
+func (e *Engine) Resume() {
+	e.Mu.Lock()
+	e.Paused = false
+	e.Mu.Unlock()
+}
 
 func (e *Engine) Wait() {
 	for {
