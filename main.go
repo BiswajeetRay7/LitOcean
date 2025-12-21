@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,85 +13,82 @@ import (
 	"time"
 )
 
-const author = "Biswajeet Ray"
-const version = "1.0"
-
-var domain string
-var results = make(map[string][]string)
-var mutex sync.Mutex
-
-// ===================== BANNER & ANIMATION =====================
+var (
+	results = make(map[string]bool)
+	mu      sync.Mutex
+)
 
 func banner() {
-	fmt.Println(`
-☠️🌊 LITOCEAN-GX 🌊☠️
-Ultimate Subdomain Enumeration Engine
-Developed by Biswajeet Ray
-`)
-}
-
-func spinner(msg string, done chan bool) {
-	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	i := 0
-	for {
-		select {
-		case <-done:
-			fmt.Printf("\r✔ %s completed\n", msg)
-			return
-		default:
-			fmt.Printf("\r%s %s...", frames[i%len(frames)], msg)
-			time.Sleep(120 * time.Millisecond)
-			i++
-		}
+	ascii := `
+██╗     ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
+██║     ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
+██║     ██║   ██║   ██║   ██║██║     █████╗  ███████║██╔██╗ ██║
+██║     ██║   ██║   ██║   ██║██║     ██╔══╝  ██╔══██║██║╚██╗██║
+███████╗██║   ██║   ╚██████╔╝╚██████╗███████╗██║  ██║██║ ╚████║
+╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+`
+	for _, c := range ascii {
+		fmt.Print(string(c))
+		time.Sleep(2 * time.Millisecond)
 	}
+	fmt.Println("☠️🌊 LITOCEAN-GX 🌊☠️")
+	fmt.Println("Ultimate Subdomain Enumeration Engine")
+	fmt.Println("Developed by Biswajeet Ray")
+	fmt.Println(strings.Repeat("=", 60))
 }
 
-// ===================== UTILITIES =====================
-
-func unique(input []string) []string {
-	seen := make(map[string]bool)
-	var out []string
-	for _, v := range input {
-		if !seen[v] {
-			seen[v] = true
-			out = append(out, v)
-		}
-	}
-	return out
+func addResult(sub string) {
+	mu.Lock()
+	defer mu.Unlock()
+	results[sub] = true
 }
 
-func save(filename string, data []string) {
-	f, _ := os.Create(filename)
-	defer f.Close()
-	for _, v := range data {
-		fmt.Fprintln(f, v)
-	}
+func count(label string, n int) {
+	fmt.Printf("✅ %-15s → %d subdomains\n", label, n)
 }
 
-// ===================== DEPENDENCY INSTALLER =====================
-
-func installTool(name, pkg string) {
-	if _, err := exec.LookPath(name); err == nil {
+func fetchLines(url string, parser func(string) []string) {
+	resp, err := http.Get(url)
+	if err != nil {
 		return
 	}
-	fmt.Printf("[+] Installing %s\n", name)
-	cmd := exec.Command("go", "install", pkg)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Run()
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	lines := parser(string(body))
+	for _, s := range lines {
+		addResult(s)
+	}
+	count(url, len(lines))
 }
 
-func installDependencies() {
-	installTool("subfinder", "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")
-	installTool("assetfinder", "github.com/tomnomnom/assetfinder@latest")
-	installTool("amass", "github.com/owasp-amass/amass/v4/...@master")
-	installTool("findomain", "github.com/findomain/findomain@latest")
-	installTool("httpx", "github.com/projectdiscovery/httpx/cmd/httpx@latest")
+func alienvault(domain string) {
+	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var data map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&data)
+
+	items, ok := data["passive_dns"].([]interface{})
+	if !ok {
+		return
+	}
+
+	c := 0
+	for _, v := range items {
+		m := v.(map[string]interface{})
+		host := m["hostname"].(string)
+		addResult(host)
+		c++
+	}
+	count("AlienVault", c)
 }
 
-// ===================== API SOURCES =====================
-
-func crtsh() {
+func crtsh(domain string) {
 	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -101,170 +97,102 @@ func crtsh() {
 	defer resp.Body.Close()
 
 	var data []map[string]interface{}
-	body, _ := io.ReadAll(resp.Body)
-	json.Unmarshal(body, &data)
+	json.NewDecoder(resp.Body).Decode(&data)
 
-	var subs []string
-	for _, entry := range data {
-		if name, ok := entry["name_value"].(string); ok {
-			for _, s := range strings.Split(name, "\n") {
-				s = strings.TrimPrefix(s, "*.")
-				if strings.HasSuffix(s, domain) {
-					subs = append(subs, s)
-				}
-			}
+	c := 0
+	for _, e := range data {
+		names := strings.Split(e["name_value"].(string), "\n")
+		for _, n := range names {
+			n = strings.TrimPrefix(n, "*.")
+			addResult(n)
+			c++
 		}
 	}
-
-	mutex.Lock()
-	results["crt.sh"] = unique(subs)
-	mutex.Unlock()
+	count("crt.sh", c)
 }
 
-func alienvault() {
-	url := fmt.Sprintf("https://otx.alienvault.com/api/v1/indicators/domain/%s/passive_dns", domain)
+func hackertarget(domain string) {
+	url := fmt.Sprintf("https://api.hackertarget.com/hostsearch/?q=%s", domain)
 	resp, err := http.Get(url)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
-	type Resp struct {
-		Passive []struct {
-			Hostname string `json:"hostname"`
-		} `json:"passive_dns"`
+	sc := bufio.NewScanner(resp.Body)
+	c := 0
+	for sc.Scan() {
+		parts := strings.Split(sc.Text(), ",")
+		addResult(parts[0])
+		c++
 	}
-
-	var r Resp
-	json.NewDecoder(resp.Body).Decode(&r)
-
-	var subs []string
-	for _, h := range r.Passive {
-		if strings.HasSuffix(h.Hostname, domain) {
-			subs = append(subs, h.Hostname)
-		}
-	}
-
-	mutex.Lock()
-	results["AlienVault"] = unique(subs)
-	mutex.Unlock()
+	count("HackerTarget", c)
 }
 
-func anubis() {
-	url := fmt.Sprintf("https://jldc.me/anubis/subdomains/%s", domain)
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	var subs []string
-	json.NewDecoder(resp.Body).Decode(&subs)
-
-	mutex.Lock()
-	results["Anubis"] = unique(subs)
-	mutex.Unlock()
-}
-
-// ===================== TOOL SOURCES =====================
-
-func runTool(name string, args []string) {
+func runTool(name string, args ...string) {
 	cmd := exec.Command(name, args...)
-	stdout, _ := cmd.StdoutPipe()
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return
+	}
 	cmd.Start()
 
-	scanner := bufio.NewScanner(stdout)
-	var subs []string
-	for scanner.Scan() {
-		s := strings.TrimSpace(scanner.Text())
-		if strings.HasSuffix(s, domain) {
-			subs = append(subs, s)
-		}
+	sc := bufio.NewScanner(out)
+	c := 0
+	for sc.Scan() {
+		addResult(sc.Text())
+		c++
 	}
 	cmd.Wait()
-
-	mutex.Lock()
-	results[name] = unique(subs)
-	mutex.Unlock()
+	count(strings.ToUpper(name), c)
 }
 
-// ===================== MAIN =====================
+func install(tool string, cmd string) {
+	if _, err := exec.LookPath(tool); err == nil {
+		return
+	}
+	fmt.Println("⬇️ Installing", tool)
+	exec.Command("bash", "-c", cmd).Run()
+}
 
 func main() {
-	flag.StringVar(&domain, "d", "", "Target domain")
-	flag.Parse()
-
-	if domain == "" {
-		fmt.Println("Usage: ./litocean -d example.com")
+	if len(os.Args) < 3 || os.Args[1] != "-d" {
+		fmt.Println("Usage: LitOcean -d example.com")
 		return
 	}
 
+	domain := os.Args[2]
 	banner()
-	fmt.Println("[*] Installing dependencies if missing...")
-	installDependencies()
+
+	fmt.Println("🔧 Checking & installing dependencies...")
+	install("subfinder", "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")
+	install("assetfinder", "go install github.com/tomnomnom/assetfinder@latest")
+	install("amass", "sudo apt install -y amass")
+	install("findomain", "curl -LO https://github.com/findomain/findomain/releases/latest/download/findomain-linux && chmod +x findomain-linux && sudo mv findomain-linux /usr/bin/findomain")
+
+	fmt.Println("🚀 Starting enumeration...\n")
 
 	var wg sync.WaitGroup
 
-	// APIs
-	apiTasks := []func(){crtsh, alienvault, anubis}
-	for _, task := range apiTasks {
-		wg.Add(1)
-		go func(t func()) {
-			done := make(chan bool)
-			go spinner("API Source", done)
-			t()
-			done <- true
-			wg.Done()
-		}(task)
-	}
-
-	// Tools
-	wg.Add(1)
-	go func() {
-		runTool("subfinder", []string{"-d", domain, "-silent"})
-		wg.Done()
-	}()
-
-	wg.Add(1)
-	go func() {
-		runTool("assetfinder", []string{"--subs-only", domain})
-		wg.Done()
-	}()
-
-	wg.Add(1)
-	go func() {
-		runTool("findomain", []string{"-t", domain, "-q"})
-		wg.Done()
-	}()
-
-	wg.Add(1)
-	go func() {
-		runTool("amass", []string{"enum", "-passive", "-d", domain})
-		wg.Done()
-	}()
-
+	wg.Add(3)
+	go func() { defer wg.Done(); alienvault(domain) }()
+	go func() { defer wg.Done(); crtsh(domain) }()
+	go func() { defer wg.Done(); hackertarget(domain) }()
 	wg.Wait()
 
-	// Merge
-	var all []string
-	fmt.Println("\n📊 SOURCE STATISTICS")
-	for src, subs := range results {
-		fmt.Printf("✔ %-12s : %d\n", src, len(subs))
-		all = append(all, subs...)
+	fmt.Println("\n⚙️ Running local tools...\n")
+
+	runTool("subfinder", "-d", domain, "-silent")
+	runTool("assetfinder", "--subs-only", domain)
+	runTool("amass", "enum", "-passive", "-d", domain)
+	runTool("findomain", "-t", domain, "-q")
+
+	fmt.Println("\n📦 FINAL RESULTS")
+	fmt.Println(strings.Repeat("-", 40))
+
+	for s := range results {
+		fmt.Println(s)
 	}
 
-	all = unique(all)
-	save("subs.txt", all)
-
-	fmt.Printf("\n☠️ TOTAL UNIQUE SUBDOMAINS: %d\n", len(all))
-
-	// Alive check
-	fmt.Println("\n🌐 Probing live hosts...")
-	cmd := exec.Command("httpx", "-l", "subs.txt", "-silent")
-	out, _ := cmd.Output()
-	lines := strings.Split(string(out), "\n")
-	save("alive.txt", lines)
-
-	fmt.Printf("✔ ALIVE HOSTS: %d\n", len(lines))
-	fmt.Println("\n🔥 Recon Completed Successfully")
+	fmt.Printf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
 }
