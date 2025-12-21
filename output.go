@@ -6,7 +6,7 @@ import (
 	"sort"
 )
 
-func saveSubs(file string) {
+func exportResults() {
 	resultsMu.Lock()
 	defer resultsMu.Unlock()
 
@@ -16,26 +16,12 @@ func saveSubs(file string) {
 	}
 	sort.Strings(subs)
 
-	f, _ := os.Create(file)
-	defer f.Close()
-
+	f, _ := os.Create("subs.txt")
 	for _, s := range subs {
 		f.WriteString(s + "\n")
 	}
-}
+	f.Close()
 
-func exportAll() {
-	prev := loadPrevious("subs.txt")
-	saveSubs("subs.txt")
-	saveDiff(prev, results)
-	ensureHTTPX()
-
-	exec.Command(
-		"httpx",
-		"-l", "subs.txt",
-		"-silent",
-		"-sc",
-		"-title",
-		"-o", "alive.txt",
-	).Run()
+	exec.Command("httpx", "-l", "subs.txt", "-silent",
+		"-threads", "200", "-o", "alive.txt").Run()
 }
