@@ -11,17 +11,21 @@ import (
 var engine = &Engine{}
 
 func main() {
-	domain := flag.String("d", "", "Single domain")
-	list := flag.String("l", "", "List of domains")
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		selfUpdate()
+		return
+	}
+
+	d := flag.String("d", "", "Domain")
+	l := flag.String("l", "", "List")
 	flag.Parse()
 
 	var domains []string
-	if *domain != "" {
-		domains = append(domains, *domain)
+	if *d != "" {
+		domains = append(domains, *d)
 	}
-
-	if *list != "" {
-		f, _ := os.Open(*list)
+	if *l != "" {
+		f, _ := os.Open(*l)
 		sc := bufio.NewScanner(f)
 		for sc.Scan() {
 			domains = append(domains, sc.Text())
@@ -38,20 +42,22 @@ func main() {
 			{"amass", 0, "Waiting"},
 			{"findomain", 0, "Waiting"},
 		},
+		StartTime: time.Now(),
+		Dark:      true,
 	}
 
 	p := tea.NewProgram(model)
 	go p.Start()
 
-	for _, d := range domains {
-		go RunAlienVault(d, p)
-		go RunCrtSh(d, p)
-		go RunHackerTarget(d, p)
+	for _, dom := range domains {
+		go RunAlienVault(dom, p)
+		go RunCrtSh(dom, p)
+		go RunHackerTarget(dom, p)
 
-		go RunTool("subfinder", []string{"-d", d, "-silent"}, p)
-		go RunTool("assetfinder", []string{"--subs-only", d}, p)
-		go RunTool("amass", []string{"enum", "-passive", "-d", d}, p)
-		go RunTool("findomain", []string{"-t", d, "-q"}, p)
+		go RunTool("subfinder", []string{"-d", dom, "-silent"}, p)
+		go RunTool("assetfinder", []string{"--subs-only", dom}, p)
+		go RunTool("amass", []string{"enum", "-passive", "-d", dom}, p)
+		go RunTool("findomain", []string{"-t", dom, "-q"}, p)
 	}
 
 	select {}
