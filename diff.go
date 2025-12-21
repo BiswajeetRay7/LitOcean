@@ -8,6 +8,7 @@ import (
 
 func loadPrevious(file string) map[string]bool {
 	prev := map[string]bool{}
+
 	f, err := os.Open(file)
 	if err != nil {
 		return prev
@@ -28,12 +29,15 @@ func saveDiff(prev, current map[string]bool) {
 			diff = append(diff, s)
 		}
 	}
+
 	if len(diff) == 0 {
 		return
 	}
+
 	sort.Strings(diff)
 	f, _ := os.Create("diff.txt")
 	defer f.Close()
+
 	for _, s := range diff {
 		f.WriteString(s + "\n")
 	}
