@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,57 +16,38 @@ type Source struct {
 
 type Model struct {
 	Sources   []Source
-	Cursor    int
 	StartTime time.Time
+	ShowHelp  bool
 }
 
-func stars(status string) string {
-	switch status {
-	case "Done":
+func stars(s string) string {
+	if s == "Done" {
 		return "⭐⭐⭐"
-	case "Running":
-		return "⭐⭐☆"
-	default:
-		return "⭐☆☆"
 	}
+	if s == "Running" {
+		return "⭐⭐☆"
+	}
+	return "⭐☆☆"
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return t
-	})
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return t })
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case Source:
 		for i := range m.Sources {
 			if m.Sources[i].Name == msg.Name {
 				m.Sources[i] = msg
 			}
 		}
-
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "up":
-			if m.Cursor > 0 {
-				m.Cursor--
-			}
-		case "down":
-			if m.Cursor < len(m.Sources)-1 {
-				m.Cursor++
-			}
-		case "s":
-			sort.Slice(m.Sources, func(i, j int) bool {
-				return m.Sources[i].Count > m.Sources[j].Count
-			})
-		case "p":
-			engine.Pause()
-		case "r":
-			engine.Resume()
+		case "h":
+			m.ShowHelp = !m.ShowHelp
 		case "e":
-			exportAll()
+			exportResults()
 		case "q":
 			return m, tea.Quit
 		}
@@ -76,29 +56,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	title := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#5FD7FF")).
-		Bold(true)
+	if m.ShowHelp {
+		return `
+🌊⭐ LITOCEAN HELP ⭐🌊
 
-	out := title.Render("🌊⭐ LITOCEAN ⭐🌊\nAdvanced Subdomain Enumeration Framework\n")
-	out += fmt.Sprintf("⏱ Elapsed: %s\n\n", time.Since(m.StartTime).Truncate(time.Second))
+USAGE:
+  litocean -d domain.com
+  litocean -l domains.txt
 
-	for i, s := range m.Sources {
-		cursor := " "
-		if i == m.Cursor {
-			cursor = "➤"
-		}
-		out += fmt.Sprintf(
-			"%s %-14s %s %-8s %d\n",
-			cursor,
-			s.Name,
-			stars(s.Status),
-			s.Status,
-			s.Count,
-		)
+KEYS:
+  h  help
+  e  export
+  q  quit
+`
 	}
 
-	out += fmt.Sprintf("\n🔥 TOTAL UNIQUE SUBDOMAINS: %d\n", len(results))
-	out += "\nKeys: ↑↓ scroll | s sort | e export | p pause | r resume | q quit\n"
+	title := lipgloss.NewStyle().Foreground(lipgloss.Color("#5FD7FF")).Bold(true)
+
+	out := title.Render(`
+██╗     ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
+██║     ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
+██║     ██║   ██║   ██║   ██║██║     █████╗  ███████║██╔██╗ ██║
+██║     ██║   ██║   ██║   ██║██║     ██╔══╝  ██╔══██║██║╚██╗██║
+███████╗██║   ██║   ╚██████╔╝╚██████╗███████╗██║  ██║██║ ╚████║
+╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+
+🌊⭐ LITOCEAN ⭐🌊
+Subdomain Enumeration Framework
+`)
+
+	out += fmt.Sprintf("⏱ Elapsed: %s\n\n",
+		time.Since(m.StartTime).Truncate(time.Second))
+
+	for _, s := range m.Sources {
+		out += fmt.Sprintf("%-12s %s %s %d\n",
+			s.Name, stars(s.Status), s.Status, s.Count)
+	}
 	return out
 }
