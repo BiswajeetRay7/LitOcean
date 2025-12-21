@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -10,23 +11,43 @@ import (
 )
 
 var engine = &Engine{}
+var results = map[string]bool{}
+var resultsMu = make(chan struct{}, 1)
+
+func addSub(s string) {
+	if s == "" {
+		return
+	}
+	resultsMu <- struct{}{}
+	results[s] = true
+	<-resultsMu
+}
+
+func update(p *tea.Program, name string, count int, status string) {
+	p.Send(Source{Name: name, Count: count, Status: status})
+}
+
+func printHelp() {
+	fmt.Println("Usage: litocean -d domain.com | -l domains.txt")
+}
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "update" {
-		selfUpdate()
+	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		printHelp()
 		return
 	}
 
-	d := flag.String("d", "", "Domain")
-	l := flag.String("l", "", "Domain list")
+	ensureGo()
+	ensureAllTools()
+
+	d := flag.String("d", "", "domain")
+	l := flag.String("l", "", "list")
 	flag.Parse()
 
 	var domains []string
-
 	if *d != "" {
 		domains = append(domains, *d)
 	}
-
 	if *l != "" {
 		f, _ := os.Open(*l)
 		sc := bufio.NewScanner(f)
@@ -37,12 +58,12 @@ func main() {
 
 	model := Model{
 		Sources: []Source{
-			{"AlienVault", 0, "Waiting"},
 			{"crt.sh", 0, "Waiting"},
-			{"HackerTarget", 0, "Waiting"},
+			{"wayback", 0, "Waiting"},
 			{"subfinder", 0, "Waiting"},
-			{"assetfinder", 0, "Waiting"},
 			{"amass", 0, "Waiting"},
+			{"assetfinder", 0, "Waiting"},
+			{"chaos", 0, "Waiting"},
 			{"findomain", 0, "Waiting"},
 		},
 		StartTime: time.Now(),
@@ -51,15 +72,14 @@ func main() {
 	p := tea.NewProgram(model)
 	go p.Start()
 
-	for _, dom := range domains {
-		go RunAlienVault(dom, p)
-		go RunCrtSh(dom, p)
-		go RunHackerTarget(dom, p)
-
-		go RunTool("subfinder", []string{"-d", dom, "-silent"}, p)
-		go RunTool("assetfinder", []string{"--subs-only", dom}, p)
-		go RunTool("amass", []string{"enum", "-passive", "-d", dom}, p)
-		go RunTool("findomain", []string{"-t", dom, "-q"}, p)
+	for _, d := range domains {
+		go RunCrtSh(d, p)
+		go RunWayback(d, p)
+		go RunTool("subfinder", []string{"-d", d, "-all", "-silent"}, p)
+		go RunTool("amass", []string{"enum", "-passive", "-d", d}, p)
+		go RunTool("assetfinder", []string{"--subs-only", d}, p)
+		go RunTool("chaos", []string{"-d", d, "-silent"}, p)
+		go RunTool("findomain", []string{"-t", d, "-q"}, p)
 	}
 
 	select {}
