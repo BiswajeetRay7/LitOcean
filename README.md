@@ -1,47 +1,17 @@
-# LitOcean
-The LitOcean Subdomain Enumeration Tool
+# 🌊 LITOCEAN - Ultimate Subdomain Security Suite
 
-# LitOcean Subdomain Enumeration Tool
+![Version](https://img.shields.io/badge/version-2.0-blue?style=for-the-badge&logo=appveyor)
+![Language](https://img.shields.io/badge/language-BASH-success?style=for-the-badge&logo=gnu-bash)
+![Focus](https://img.shields.io/badge/Focus-Bug%20Bounty-red?style=for-the-badge)
 
-### Author: Biswajeet Ray  
+**LITOCEAN** is a high-speed, parallelized subdomain enumeration wrapper designed for Bug Bounty Hunters and Pentesting teams. It aggregates data from the industry's top reconnaissance tools and verifies live hosts automatically.
 
----
+**Developed by:** Biswajeet Ray
 
-## Description
-
-**LitOcean Subdomain Enumeration Tool** is a simple and efficient utility designed for security professionals, penetration testers, and bug bounty hunters to perform automated subdomain discovery and reconnaissance. This tool aggregates subdomains from multiple reliable sources, removes duplicates, and provides a clean list of unique subdomains for further analysis.
-
-The tool leverages a combination of popular subdomain discovery tools.
-
----
-
-## Features
-
-- **Multiple Data Sources**: Gathers subdomains from well-known tools like:
-  - Amass
-  - Assetfinder
-  - Subfinder
-  - crt.sh 
-  - Archive.org
-- **Duplicate Removal**: Automatically filters out duplicate subdomains and empty lines, ensuring a clean output.
-- **Fast & Efficient**: Utilizes passive enumeration techniques for faster and stealthier operations.
-
----
-## Installation
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/BiswajeetRay7/LitOcean.git
-   cd LitOcean
-   bash LitOcean.sh
----
-This tool is D3d1c4737 to V57
-
-## Author
-
-- **Name**: Biswajeet Ray  
-- **GitHub**: [Biswajeet Ray](https://github.com/BiswajeetRay7)  
-- **LinkedIn**: [Biswajeet Ray](https://www.linkedin.com/in/biswajeet-ray-397742200/)  
-
-
-  
+```text
+██╗      ██╗████████╗ ██████╗  ██████╗███████╗ █████╗ ███╗   ██╗
+██║      ██║╚══██╔══╝██╔═══██╗██╔════╝██╔════╝██╔══██╗████╗  ██║
+██║      ██║   ██║   ██║   ██║██║      █████╗  ███████║██╔██╗ ██║
+██║      ██║   ██║   ██║   ██║██║      ██╔══╝  ██╔══██║██║╚██╗██║
+███████╗██║   ██║   ╚██████╔╝╚██████╗███████╗██║  ██║██║ ╚████║
+╚══════╝╚═╝   ╚═╝    ╚═════╝  ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝   ╚═══╝
