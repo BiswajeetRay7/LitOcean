@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -17,13 +18,15 @@ func main() {
 	}
 
 	d := flag.String("d", "", "Domain")
-	l := flag.String("l", "", "List")
+	l := flag.String("l", "", "Domain list")
 	flag.Parse()
 
 	var domains []string
+
 	if *d != "" {
 		domains = append(domains, *d)
 	}
+
 	if *l != "" {
 		f, _ := os.Open(*l)
 		sc := bufio.NewScanner(f)
@@ -43,7 +46,6 @@ func main() {
 			{"findomain", 0, "Waiting"},
 		},
 		StartTime: time.Now(),
-		Dark:      true,
 	}
 
 	p := tea.NewProgram(model)
